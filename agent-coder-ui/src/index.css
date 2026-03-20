@@ -109,3 +109,18 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+.shiki {
+  margin: 0 !important;
+  padding: 16px !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  border-radius: 0 !important;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.shiki code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
