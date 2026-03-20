@@ -19,6 +19,7 @@ type AgentResult = {
 };
 
 export default function App() {
+  const API_BASE = "/api";
   const [task, setTask] = useState("");
   const [results, setResults] = useState<AgentResult[]>([]);
   const [running, setRunning] = useState(false);
@@ -27,48 +28,68 @@ export default function App() {
   async function runAgents() {
     if (!task.trim() || running) return;
 
+    eventSourceRef.current?.close();
     setResults([]);
     setRunning(true);
 
-    // Step 1: POST the task, get a runId back
-    const res = await fetch("http://localhost:3001/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ task }),
-    });
-    const { runId } = await res.json();
+    try {
+      const res = await fetch(`${API_BASE}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task }),
+      });
 
-    // Step 2: Open SSE connection with that runId
-    const es = new EventSource(`http://localhost:3001/stream/${runId}`);
-    eventSourceRef.current = es;
-
-    es.onmessage = (e) => {
-      const event: AgentEvent = JSON.parse(e.data);
-
-      if (event.done) {
-        es.close();
-        setRunning(false);
-        return;
+      if (!res.ok) {
+        throw new Error(`Request failed with status ${res.status}`);
       }
 
-      // Extract the relevant content for this agent
-      const content =
-        event.data.plan ||
-        event.data.code ||
-        event.data.review ||
-        JSON.stringify(event.data);
+      const { runId } = await res.json();
+      const es = new EventSource(`${API_BASE}/stream/${runId}`);
+      eventSourceRef.current = es;
 
-      // Add this agent's result to the list
-      setResults((prev) => [
-        ...prev,
-        { agent: event.agent, content, status: "done" },
-      ]);
-    };
+      es.onmessage = (e) => {
+        const event: AgentEvent = JSON.parse(e.data);
 
-    es.onerror = () => {
-      es.close();
+        if (event.done) {
+          es.close();
+          setRunning(false);
+          return;
+        }
+
+        const content =
+          event.data.plan ||
+          event.data.code ||
+          event.data.review ||
+          JSON.stringify(event.data);
+
+        setResults((prev) => [
+          ...prev,
+          { agent: event.agent, content, status: "done" },
+        ]);
+      };
+
+      es.onerror = () => {
+        es.close();
+        setRunning(false);
+        setResults((prev) => [
+          ...prev,
+          {
+            agent: "system",
+            content: "Connection lost while streaming. Ensure backend server is running on port 3001.",
+            status: "done",
+          },
+        ]);
+      };
+    } catch (error) {
       setRunning(false);
-    };
+      setResults([
+        {
+          agent: "system",
+          content: error instanceof Error ? error.message : "Failed to fetch. Ensure backend server is running on port 3001.",
+          status: "done",
+        },
+      ]);
+    }
   }
 
   const agentColors: Record<string, string> = {
